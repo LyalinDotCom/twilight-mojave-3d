@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Twilight Mojave — Real-Time Three.js Showcase</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23241D44'/><circle cx='16' cy='16' r='8' fill='%23F98456'/></svg>"
+    />
+    <style>
+      *, *::before, *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      html, body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #100c1c;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        color: #f4f1f8;
+        -webkit-font-smoothing: antialiased;
+        user-select: none;
+      }
+
+      #app {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+
+      #webgl-canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+        outline: none;
+        cursor: grab;
+      }
+
+      #webgl-canvas:active {
+        cursor: grabbing;
+      }
+
+      /* Split-Screen Benchmark Mode overlay */
+      body.mode-split {
+        background: #ffffff;
+      }
+
+      #split-frame {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 5;
+      }
+
+      body.mode-split #split-frame {
+        display: flex;
+      }
+
+      /* The white mask framing two rounded 9:16 viewports */
+      .split-card {
+        position: relative;
+        width: 100%;
+        height: 100%;
+      }
+
+      .split-labels {
+        position: fixed;
+        left: 0;
+        right: 0;
+        pointer-events: none;
+        z-index: 6;
+        display: none;
+      }
+
+      body.mode-split .split-labels {
+        display: block;
+      }
+
+      .split-label {
+        position: fixed;
+        text-align: center;
+        color: #111111;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        line-height: 1.1;
+        white-space: nowrap;
+        transform: translateX(-50%);
+      }
+
+      /* Floating Glass HUD */
+      #hud {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 20;
+        transition: opacity 0.25s ease;
+      }
+
+      body.hud-hidden #hud {
+        opacity: 0;
+        visibility: hidden;
+      }
+
+      .hud-top-left {
+        position: fixed;
+        top: 16px;
+        left: 18px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        pointer-events: auto;
+      }
+
+      .hud-top-right {
+        position: fixed;
+        top: 16px;
+        right: 18px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        pointer-events: auto;
+      }
+
+      .hud-bottom {
+        position: fixed;
+        bottom: 18px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        justify-content: center;
+        max-width: calc(100vw - 32px);
+        pointer-events: auto;
+      }
+
+      .glass-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 7px 12px;
+        border-radius: 999px;
+        background: rgba(18, 14, 30, 0.56);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        color: #f3effa;
+        font-size: 12px;
+        font-weight: 500;
+        letter-spacing: 0.01em;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+        transition: background 0.18s ease, border-color 0.18s ease, transform 0.12s ease;
+      }
+
+      body.mode-split .glass-pill {
+        background: rgba(20, 18, 28, 0.78);
+        border-color: rgba(0, 0, 0, 0.12);
+      }
+
+      button.glass-pill {
+        cursor: pointer;
+        font-family: inherit;
+      }
+
+      button.glass-pill:hover {
+        background: rgba(38, 30, 62, 0.78);
+        border-color: rgba(255, 255, 255, 0.28);
+      }
+
+      button.glass-pill:active {
+        transform: scale(0.97);
+      }
+
+      button.glass-pill.active {
+        background: rgba(44, 230, 255, 0.22);
+        border-color: rgba(44, 230, 255, 0.65);
+        color: #d8fbff;
+      }
+
+      body.mode-split button.glass-pill.active {
+        background: rgba(18, 130, 165, 0.92);
+        border-color: rgba(44, 230, 255, 0.85);
+        color: #ffffff;
+      }
+
+      .hud-badge {
+        font-weight: 600;
+        color: #ffbd80;
+        letter-spacing: 0.03em;
+      }
+
+      .hud-sep {
+        width: 1px;
+        height: 14px;
+        background: rgba(255, 255, 255, 0.18);
+      }
+
+      .fps-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #48f0a4;
+        box-shadow: 0 0 8px #48f0a4;
+      }
+
+      .preset-group {
+        display: inline-flex;
+        align-items: center;
+        padding: 3px;
+        gap: 2px;
+        border-radius: 999px;
+        background: rgba(18, 14, 30, 0.56);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+      }
+
+      body.mode-split .preset-group {
+        background: rgba(20, 18, 28, 0.78);
+      }
+
+      .preset-btn {
+        cursor: pointer;
+        border: none;
+        background: transparent;
+        color: rgba(243, 239, 250, 0.76);
+        font-family: inherit;
+        font-size: 11.5px;
+        font-weight: 500;
+        padding: 5px 10px;
+        border-radius: 999px;
+        transition: background 0.15s ease, color 0.15s ease;
+      }
+
+      .preset-btn:hover {
+        color: #ffffff;
+        background: rgba(255, 255, 255, 0.1);
+      }
+
+      .preset-btn.active {
+        background: rgba(255, 162, 102, 0.26);
+        color: #ffd8b5;
+      }
+
+      .hint-text {
+        font-size: 11px;
+        color: rgba(243, 239, 250, 0.65);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="webgl-canvas"></canvas>
+      <svg id="split-frame" aria-hidden="true"></svg>
+      <div class="split-labels" aria-hidden="true">
+        <div id="split-label-left" class="split-label">Low-Poly Baseline</div>
+        <div id="split-label-right" class="split-label">Real-Time Three.js</div>
+      </div>
+      <div id="hud"></div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
