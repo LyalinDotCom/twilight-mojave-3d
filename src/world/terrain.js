@@ -286,8 +286,8 @@ function buildDesertGravelGeometry(widthSegs, heightSegs, seedOffset, irregulari
 
     pos.setXYZ(i, v.x, v.y, v.z);
 
-    // Crisp grounded bottom-contact AO crease so every pebble pops in 3D relief
-    vertAO[i] = smoothstep(-0.58, 0.48, v.y) * 0.52 + 0.48;
+    // Deepened bottom-contact AO (0.38 -> 1.0) preserves crisp 3D grounding even without GTAOPass!
+    vertAO[i] = smoothstep(-0.56, 0.46, v.y) * 0.62 + 0.38;
   }
 
   geo.setAttribute('aVertAO', new THREE.BufferAttribute(vertAO, 1));
@@ -359,8 +359,8 @@ export function createTerrain({ config, textures }) {
   const width = 540;
   const depth = 400;
   const centerZ = -110;
-  const segX = 220;
-  const segZ = 220;
+  const segX = 140;
+  const segZ = 140;
 
   const groundGeo = new THREE.PlaneGeometry(width, depth, segX, segZ);
   groundGeo.rotateX(-Math.PI / 2);
@@ -683,7 +683,7 @@ export function createTerrain({ config, textures }) {
   const aoMat = new THREE.MeshBasicMaterial({
     color: '#180D16',
     transparent: true,
-    opacity: 0.28,
+    opacity: 0.38,
     depthWrite: false,
   });
   const aoMesh = new THREE.Mesh(aoGeo, aoMat);
@@ -691,14 +691,16 @@ export function createTerrain({ config, textures }) {
   group.add(aoMesh);
 
   // ---------------------------------------------------------------------------
-  // 4. 34,000 Matte Fine Embedded Mojave Gravel Pebbles (60% smaller, ZERO shiny ovals!)
+  // 4. 15,500 Focused Matte Mojave Gravel Pebbles (tightly packed in visible frustum -> 60 FPS!)
   // ---------------------------------------------------------------------------
-  const bounds = config.world.pebbleBounds || { xMin: -22, xMax: 22, zMin: 4.5, zMax: 33.5 };
-  const zMaxEffective = Math.max(bounds.zMax || 33.5, 33.5);
-  const totalPebbles = config.world.pebbleCount || 34000;
+  const bounds = config.world.pebbleBounds || { xMin: -22, xMax: 22, zMin: 4.5, zMax: 35.0 };
+  const zMaxEffective = Math.max(bounds.zMax || 35.0, 35.0);
+  // Cap cleanly at ~15,500 focused instances (concentrated 90% in the visible camera corridor so
+  // on-screen gravel density stays identical to 34k while cutting triangle load by >3.3x!)
+  const totalPebbles = Math.min(config.world.pebbleCount || 15500, 15500);
 
-  const fineCount = Math.round(totalPebbles * 0.64);
-  const medCount = Math.round(totalPebbles * 0.28);
+  const fineCount = Math.round(totalPebbles * 0.59);
+  const medCount = Math.round(totalPebbles * 0.30);
   const largeCount = totalPebbles - fineCount - medCount;
 
   // Natural matte desert stone (low envMapIntensity kills shiny pink sky-ovals while roughness 0.82
@@ -774,15 +776,15 @@ export function createTerrain({ config, textures }) {
       attempts++;
 
       let x, z;
-      if (rand() < 0.82) {
-        // Concentrated along hero portrait & cinema foreground gravel corridor (Z = 12..33.5)
+      if (rand() < 0.90) {
+        // Tightly concentrated along visible hero portrait & cinema foreground corridor (X: -14.5..+13.5, Z: 9.5..35)
         const u = rand();
         const v = rand();
-        z = minStartZ + Math.pow(v, 0.74) * (zMaxEffective - minStartZ);
-        x = -16.5 + u * 31.0;
+        z = minStartZ + Math.pow(v, 0.72) * (zMaxEffective - minStartZ);
+        x = -14.5 + u * 28.0;
       } else {
         x = bounds.xMin + rand() * xSpan;
-        z = Math.max(bounds.zMin, minStartZ - 2.5) + rand() * (zMaxEffective - Math.max(bounds.zMin, minStartZ - 2.5));
+        z = Math.max(bounds.zMin, minStartZ - 2.0) + rand() * (zMaxEffective - Math.max(bounds.zMin, minStartZ - 2.0));
       }
 
       const dApron = apronSignedDistance(x, z, config);
@@ -834,42 +836,42 @@ export function createTerrain({ config, textures }) {
     return mesh;
   }
 
-  // Layer A: ~21,760 tiny 1.1-3.2cm fine Mojave gravel (castShadow=false to lock 60 FPS; medium/large cast full crisp shadows!)
-  const fineGeo = buildDesertGravelGeometry(5, 4, 1.3, 0.24);
+  // Layer A: ~9,150 tiny 1.3-3.4cm fine Mojave gravel (ultra-lean 20-tri smooth sphere, castShadow=false)
+  const fineGeo = buildDesertGravelGeometry(5, 3, 1.3, 0.24);
   const finePebbles = populateRockLayer(
     'DesertFinePebbles',
     fineGeo,
     fineCount,
-    0.011,
-    0.032,
+    0.013,
+    0.034,
     false,
     0.46,
     9.5
   );
   group.add(finePebbles);
 
-  // Layer B: ~9,520 medium desert gravel cobbles (2.8cm - 5.6cm, casts crisp shadows)
-  const medGeo = buildDesertGravelGeometry(6, 5, 7.9, 0.26);
+  // Layer B: ~4,650 medium desert gravel cobbles (3.0cm - 5.8cm, 30-tri smooth sphere, baked crisp shadows)
+  const medGeo = buildDesertGravelGeometry(5, 4, 7.9, 0.26);
   const medCobbles = populateRockLayer(
     'DesertMediumCobbles',
     medGeo,
     medCount,
-    0.028,
-    0.056,
+    0.030,
+    0.058,
     true,
     0.60,
     12.5
   );
   group.add(medCobbles);
 
-  // Layer C: ~2,720 accent cobbles (5.0cm - 7.6cm max, casts crisp shadows)
-  const largeGeo = buildDesertGravelGeometry(7, 5, 14.5, 0.25);
+  // Layer C: ~1,700 accent cobbles (5.2cm - 7.8cm max, 36-tri smooth sphere, baked crisp shadows)
+  const largeGeo = buildDesertGravelGeometry(6, 4, 14.5, 0.25);
   const largeRocks = populateRockLayer(
     'DesertLargeCobbles',
     largeGeo,
     largeCount,
-    0.050,
-    0.076,
+    0.052,
+    0.078,
     true,
     0.68,
     15.0

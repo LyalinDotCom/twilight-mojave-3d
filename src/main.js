@@ -73,20 +73,30 @@ async function bootstrap() {
   const canvas = document.getElementById('webgl-canvas');
   const query = parseQueryParams();
 
-  // 1. Renderer setup
+  // 1. Renderer setup (Adaptive Retina pixel budget ~2.3M px for locked 60 FPS; static shadow maps baked once!)
+  const MAX_DPR = 1.5;
+  const MAX_PIXEL_BUDGET = 2300000;
+  function computeAdaptiveDpr(w, h) {
+    const budgetDpr = Math.sqrt(MAX_PIXEL_BUDGET / Math.max(1, w * h));
+    return Math.min(window.devicePixelRatio || 1, MAX_DPR, Math.max(1.0, budgetDpr));
+  }
+
   const renderer = new THREE.WebGLRenderer({
     canvas,
     antialias: true,
     powerPreference: 'high-performance',
     preserveDrawingBuffer: true,
   });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setPixelRatio(computeAdaptiveDpr(window.innerWidth, window.innerHeight));
   renderer.setSize(window.innerWidth, window.innerHeight, false);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = CONFIG.lighting.exposure;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.autoUpdate = false;
+  renderer.shadowMap.needsUpdate = true;
+  renderer.info.autoReset = false;
 
   // 2. Main Photoreal Scene & Camera Rig
   const scene = new THREE.Scene();
@@ -156,7 +166,7 @@ async function bootstrap() {
   function applyViewportLayout() {
     const w = window.innerWidth;
     const h = window.innerHeight;
-    const pr = Math.min(window.devicePixelRatio || 1, 2);
+    const pr = computeAdaptiveDpr(w, h);
     renderer.setPixelRatio(pr);
     renderer.setSize(w, h, false);
 
@@ -265,8 +275,15 @@ async function bootstrap() {
   let elapsed = query.seekTime !== null ? query.seekTime : 0;
   let fpsFrames = 0;
   let fpsAccum = 0;
+  let avgFrameMs = 16.67;
+
+  function rebakeShadows() {
+    scene.updateMatrixWorld(true);
+    renderer.shadowMap.needsUpdate = true;
+  }
 
   function renderFrame() {
+    renderer.info.reset();
     const w = window.innerWidth;
     const h = window.innerHeight;
 
@@ -330,11 +347,12 @@ async function bootstrap() {
 
     renderFrame();
 
-    // Update rolling FPS readout
+    // Update rolling FPS & frame-time readout
     fpsFrames++;
     fpsAccum += dt;
     if (fpsAccum >= 0.4) {
       appState.fps = fpsFrames / fpsAccum;
+      avgFrameMs = (fpsAccum / fpsFrames) * 1000;
       ui.updateFps(appState.fps);
       fpsFrames = 0;
       fpsAccum = 0;
@@ -365,6 +383,7 @@ async function bootstrap() {
     setAutoCamera(on) {
       setAutoCamera(on);
     },
+    rebakeShadows,
     getState() {
       return {
         mode: appState.mode,
@@ -383,6 +402,9 @@ async function bootstrap() {
       return {
         ready: appState.ready,
         fps: Math.round(appState.fps * 10) / 10,
+        frameMs: Math.round(avgFrameMs * 100) / 100,
+        pixelRatio: renderer.getPixelRatio(),
+        shadowAutoUpdate: renderer.shadowMap.autoUpdate,
         webgl2: renderer.capabilities.isWebGL2,
         drawCalls: renderer.info.render.calls,
         triangles: renderer.info.render.triangles,
@@ -399,13 +421,14 @@ async function bootstrap() {
     postfx,
   };
 
-  // Render initial frame synchronously before marking ready
+  // Bake all 5 static shadow maps once after world/van/station matrices are finalized, then render frame 0
   const initOpts = { livingWorld: appState.livingWorld };
   cameraRig.update(0);
   lighting.update(elapsed, 0, initOpts);
   if (typeof world?.update === 'function') world.update(elapsed, 0, initOpts);
   if (typeof van?.update === 'function') van.update(elapsed, 0, initOpts);
   if (typeof station?.update === 'function') station.update(elapsed, 0, initOpts);
+  rebakeShadows();
   renderFrame();
   appState.ready = true;
 

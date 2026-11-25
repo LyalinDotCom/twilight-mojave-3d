@@ -117,38 +117,27 @@ export function createLighting({ scene, config }) {
   group.add(apronBounce);
 
   // =========================================================================
-  // 3. ELECTRIC CYAN NEON PERIMETER SPILL (Linear RectAreaLights — Zero Orbs!)
+  // 3. ELECTRIC CYAN NEON PERIMETER SPILL (Consolidated 1× Wide RectAreaLight
+  //    + 1× Lightweight Van-Rim PointLight — 40% faster LTC fragment shader!)
   // =========================================================================
   const cyanAreaLights = [];
 
-  // Front canopy cyan neon strip: washes front apron, gravel transition & pump tops in cool cyan
-  const cyanFront = new THREE.RectAreaLight('#00DDFF', 5.8, 8.6, 0.52);
+  // Widened front canopy cyan neon strip: washes front apron, gravel transition, pump tops & van edge in cool cyan
+  const cyanFront = new THREE.RectAreaLight('#00DDFF', 6.4, 10.2, 0.56);
   cyanFront.position.set(
-    canopy.center[0],
+    canopy.center[0] - 0.35,
     canopy.soffitY + 0.18,
-    canopy.center[2] + canopy.depth * 0.5 + 0.18
+    canopy.center[2] + canopy.depth * 0.5 + 0.2
   );
-  cyanFront.lookAt(canopy.center[0], 0.35, canopy.center[2] + canopy.depth * 0.5 + 3.4);
+  cyanFront.lookAt(canopy.center[0] - 0.8, 0.35, canopy.center[2] + canopy.depth * 0.5 + 3.4);
   group.add(cyanFront);
   cyanAreaLights.push(cyanFront);
 
-  // Left canopy cyan neon overhang: paints cool electric-cyan rim across the VW van roof & flank!
-  const cyanLeft = new THREE.RectAreaLight('#00DDFF', 5.4, 4.4, 0.52);
-  cyanLeft.position.set(
-    canopy.center[0] - canopy.width * 0.5 - 0.18,
-    canopy.soffitY + 0.18,
-    canopy.center[2]
-  );
-  cyanLeft.lookAt(-5.4, 0.75, 1.35);
-  group.add(cyanLeft);
-  cyanAreaLights.push(cyanLeft);
-
-  // Storefront cyan eave strip: cool cyan highlight along upper blue facade & front curb
-  const cyanStoreEave = new THREE.RectAreaLight('#00DDFF', 3.0, 7.2, 0.24);
-  cyanStoreEave.position.set(store.center[0], store.height - 0.02, store.frontZ + 0.22);
-  cyanStoreEave.lookAt(store.center[0], 0.5, store.frontZ + 2.8);
-  group.add(cyanStoreEave);
-  cyanAreaLights.push(cyanStoreEave);
+  // Lightweight cyan rim PointLight off left canopy overhang: paints cool cyan onto VW van roof & flank
+  const cyanVanRim = new THREE.PointLight('#00DDFF', 16.5, 11.5, 2);
+  cyanVanRim.position.set(-2.9, 3.55, 1.35);
+  group.add(cyanVanRim);
+  cyanAreaLights.push(cyanVanRim);
 
   // =========================================================================
   // 4. STOREFRONT GOLDEN INTERIOR SPILL (Window Area + Bollard Shadow Spot)

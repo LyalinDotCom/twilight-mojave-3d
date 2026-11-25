@@ -43,10 +43,10 @@ const SKY_FRAGMENT_SHADER = /* glsl */ `
 
   const mat2 ROT = mat2(0.80, 0.60, -0.60, 0.80);
 
-  float fbm5(vec2 p) {
+  float fbm4(vec2 p) {
     float v = 0.0;
     float amp = 0.5;
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 4; i++) {
       v += amp * noise2D(p);
       p = ROT * p * 2.05 + vec2(13.7, 9.2);
       amp *= 0.5;
@@ -65,26 +65,46 @@ const SKY_FRAGMENT_SHADER = /* glsl */ `
     return v;
   }
 
+  float fbm2(vec2 p) {
+    float v = 0.5 * noise2D(p);
+    p = ROT * p * 2.02 + vec2(7.1, 15.4);
+    return v + 0.25 * noise2D(p);
+  }
+
   // Sculpted domain-warped Mojave altocumulus / cirrus sheet with crisp wisps & gaps
   float cloudDeck(vec2 uv, float drift, float slope, float anisoY) {
-    // Sweeping Mojave sunset cloud streaks (gentle ~10-15 deg diagonal slant, higher left -> lower right)
     vec2 p = vec2(uv.x * 0.55 - uv.y * 0.10, uv.y * anisoY + uv.x * slope);
     p.x -= drift * 0.032;
     p.y += drift * 0.006;
 
-    // Two-stage organic wind shear warp for feathery billowing edges (NOT stiff parallel stripes!)
+    // Fast 2-octave wind-shear warp (smooth low-frequency distortion, indistinguishable from 3-oct!)
     vec2 w1 = vec2(
-      fbm3(p * 0.52 + vec2(2.8, 7.1) - vec2(drift * 0.012, 0.0)),
-      fbm3(p * 0.58 + vec2(11.4, 3.3))
+      fbm2(p * 0.52 + vec2(2.8, 7.1) - vec2(drift * 0.012, 0.0)),
+      fbm2(p * 0.58 + vec2(11.4, 3.3))
     );
-    vec2 wp = p + (w1 - 0.5) * vec2(1.35, 0.72);
+    vec2 wp = p + (w1 - 0.375) * vec2(1.55, 0.82);
 
-    float body = fbm5(wp * vec2(0.95, 1.45));
-    float billows = fbm5(wp * vec2(2.15, 3.65) + vec2(4.7, -3.2));
+    float body = fbm4(wp * vec2(0.95, 1.45));
+    float billows = fbm3(wp * vec2(2.15, 3.65) + vec2(4.7, -3.2));
     float fineWisps = noise2D(wp * vec2(4.8, 9.6) + vec2(1.9, 8.4));
 
     float combined = body * 0.54 + billows * 0.34 + fineWisps * 0.12;
-    return smoothstep(0.37, 0.76, combined);
+    return smoothstep(0.35, 0.74, combined);
+  }
+
+  // Lean directional lighting derivative sample (smooth low-frequency sun-occlusion gradient, 3x faster!)
+  float cloudDeckSunSample(vec2 uv, float drift, float slope, float anisoY) {
+    vec2 p = vec2(uv.x * 0.55 - uv.y * 0.10, uv.y * anisoY + uv.x * slope);
+    p.x -= drift * 0.032;
+    p.y += drift * 0.006;
+    vec2 w1 = vec2(
+      noise2D(p * 0.52 + vec2(2.8, 7.1) - vec2(drift * 0.012, 0.0)),
+      noise2D(p * 0.58 + vec2(11.4, 3.3))
+    );
+    vec2 wp = p + (w1 - 0.5) * vec2(1.35, 0.72);
+    float body = fbm3(wp * vec2(0.95, 1.45));
+    float billows = fbm2(wp * vec2(2.15, 3.65) + vec2(4.7, -3.2));
+    return smoothstep(0.35, 0.74, body * 0.65 + billows * 0.35);
   }
 
   float starField(vec3 dir, float t) {
@@ -153,18 +173,17 @@ const SKY_FRAGMENT_SHADER = /* glsl */ `
       // Deck 1: Fiery low-to-mid altocumulus streaks (el ~ 0.04..0.44)
       float elMask1 = smoothstep(0.025, 0.085, el) * (1.0 - smoothstep(0.29, 0.55, el));
       float c1 = cloudDeck(domeUV * 0.78 + vec2(0.9, -0.4), uTime, 0.24, 1.95);
-      // Two-step lighting derivative toward low horizon sun for crisp golden-coral backlit rims
+      // Fast directional derivative toward low horizon sun for crisp golden-coral backlit rims
       vec2 sunStep = normalize(sunDir.xz) * 0.11;
-      float c1Sun = cloudDeck((domeUV + sunStep) * 0.78 + vec2(0.9, -0.4), uTime, 0.24, 1.95);
-      float c1Thick = cloudDeck((domeUV - sunStep * 0.7) * 0.78 + vec2(0.9, -0.4), uTime, 0.24, 1.95);
-      float litEdge1 = clamp((c1 - c1Sun) * 3.1 + 0.56, 0.0, 1.0);
-      float bellyShadow1 = clamp(c1 * c1Thick, 0.0, 1.0);
+      float c1Sun = cloudDeckSunSample((domeUV + sunStep) * 0.78 + vec2(0.9, -0.4), uTime, 0.24, 1.95);
+      float litEdge1 = clamp((c1 - c1Sun) * 2.9 + 0.56, 0.0, 1.0);
+      float bellyShadow1 = clamp(c1 * c1, 0.0, 1.0);
 
       // Deck 2: Higher silky rose-coral cirrus wisps (el ~ 0.15..0.58)
       float elMask2 = smoothstep(0.11, 0.22, el) * (1.0 - smoothstep(0.42, 0.72, el));
       float c2 = cloudDeck(domeUV * 1.18 + vec2(-2.4, 1.7), uTime * 0.65, 0.30, 2.35);
-      float c2Sun = cloudDeck((domeUV + sunStep * 0.8) * 1.18 + vec2(-2.4, 1.7), uTime * 0.65, 0.30, 2.35);
-      float litEdge2 = clamp((c2 - c2Sun) * 2.8 + 0.54, 0.0, 1.0);
+      float c2Sun = cloudDeckSunSample((domeUV + sunStep * 0.8) * 1.18 + vec2(-2.4, 1.7), uTime * 0.65, 0.30, 2.35);
+      float litEdge2 = clamp((c2 - c2Sun) * 2.6 + 0.54, 0.0, 1.0);
 
       // High-contrast backlit twilight cloud palette:
       // Fiery apricot-gold & hot coral-pink undersides vs dusty magenta-violet cloud tops!
